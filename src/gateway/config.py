@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
     admin_token: SecretStr | None = None  # None disables the admin API entirely
     api_key_pepper: SecretStr = SecretStr(DEV_PEPPER)
+    auto_create_tables: bool = False  # True only in tests; real databases use migrations
 
     @model_validator(mode="after")
     def _prod_needs_a_real_pepper(self) -> Self:

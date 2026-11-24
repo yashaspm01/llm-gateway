@@ -1,18 +1,26 @@
-"""Admin API: create teams, issue and revoke keys, read usage."""
+"""Admin API: manage teams and limits, issue and revoke keys, read usage."""
 
 from fastapi import APIRouter, Depends, Request
 
 from gateway import services
 from gateway.deps import SessionDep, require_admin
-from gateway.schemas import ApiKeyCreated, TeamCreate, TeamOut, UsageOut
+from gateway.schemas import ApiKeyCreated, TeamCreate, TeamOut, TeamUpdate, UsageOut
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 @router.post("/teams", response_model=TeamOut, status_code=201)
 async def create_team(body: TeamCreate, session: SessionDep) -> TeamOut:
-    team = await services.create_team(session, body.name)
-    return TeamOut(id=team.id, name=team.name)
+    team = await services.create_team(
+        session, body.name, body.rate_limit_per_minute, body.daily_token_budget
+    )
+    return TeamOut.model_validate(team)
+
+
+@router.patch("/teams/{team_id}", response_model=TeamOut)
+async def update_team(team_id: int, body: TeamUpdate, session: SessionDep) -> TeamOut:
+    team = await services.update_team(session, team_id, body.model_dump(exclude_unset=True))
+    return TeamOut.model_validate(team)
 
 
 @router.post("/teams/{team_id}/keys", response_model=ApiKeyCreated, status_code=201)

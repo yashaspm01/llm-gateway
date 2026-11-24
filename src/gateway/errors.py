@@ -1,5 +1,7 @@
 """The gateway's own error types. Each one knows its HTTP status and error type."""
 
+import math
+
 
 class GatewayError(Exception):
     status_code = 500
@@ -42,3 +44,19 @@ class ProviderError(GatewayError):
 class ProviderTimeoutError(ProviderError):
     status_code = 504
     error_type = "provider_timeout"
+
+
+class RateLimitedError(GatewayError):
+    """Caller exceeded a limit. Carries how long they should wait."""
+
+    status_code = 429
+    error_type = "rate_limit_exceeded"
+
+    def __init__(self, message: str, retry_after_s: float) -> None:
+        super().__init__(message)
+        self.retry_after_s = retry_after_s
+        self.headers = {"Retry-After": str(max(1, math.ceil(retry_after_s)))}
+
+
+class BudgetExceededError(RateLimitedError):
+    error_type = "budget_exceeded"

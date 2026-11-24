@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatMessage(BaseModel):
@@ -41,11 +41,24 @@ class ChatResponse(BaseModel):
 
 class TeamCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    rate_limit_per_minute: int = Field(default=60, ge=1)
+    daily_token_budget: int | None = Field(default=None, ge=1)
+
+
+class TeamUpdate(BaseModel):
+    """Only the fields the caller sends are changed. An explicit null means 'unlimited'."""
+
+    rate_limit_per_minute: int | None = Field(default=None, ge=1)
+    daily_token_budget: int | None = Field(default=None, ge=1)
 
 
 class TeamOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
+    rate_limit_per_minute: int
+    daily_token_budget: int | None
 
 
 class ApiKeyCreated(BaseModel):

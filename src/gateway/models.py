@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -19,6 +19,8 @@ class Team(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
+    rate_limit_per_minute: Mapped[int] = mapped_column(default=60, server_default="60")
+    daily_token_budget: Mapped[int | None] = mapped_column(default=None)  # None = unlimited
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -35,14 +37,14 @@ class ApiKey(Base):
 
 class UsageRecord(Base):
     __tablename__ = "usage_records"
+    # "Tokens this team used since midnight" runs on every request, so index exactly that.
+    __table_args__ = (Index("ix_usage_team_created", "team_id", "created_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
     request_id: Mapped[str] = mapped_column(String(64))
     provider: Mapped[str] = mapped_column(String(50))
     model: Mapped[str] = mapped_column(String(100))
     prompt_tokens: Mapped[int]
     completion_tokens: Mapped[int]
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

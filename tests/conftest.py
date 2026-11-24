@@ -15,6 +15,7 @@ def settings() -> Settings:
         database_url="sqlite+aiosqlite://",
         admin_token=SecretStr("admin-secret"),
         api_key_pepper=SecretStr("test-pepper"),
+        auto_create_tables=True,
     )
 
 

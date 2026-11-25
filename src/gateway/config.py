@@ -17,17 +17,35 @@ class Settings(BaseSettings):
     app_name: str = "llm-gateway"
     environment: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
-    provider_timeout_s: float = Field(default=30.0, gt=0)
+    provider_timeout_s: float = Field(default=30.0, gt=0)  # total deadline, retries included
 
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
     admin_token: SecretStr | None = None  # None disables the admin API entirely
     api_key_pepper: SecretStr = SecretStr(DEV_PEPPER)
     auto_create_tables: bool = False  # True only in tests; real databases use migrations
 
+    # The upstream provider
+    provider: Literal["mock", "openai_compatible"] = "mock"
+    provider_name: str = "upstream"
+    provider_base_url: str | None = None
+    provider_api_key: SecretStr | None = None
+    provider_attempt_timeout_s: float = Field(default=10.0, gt=0)  # one attempt, not the total
+
+    # Retries
+    retry_max_attempts: int = Field(default=3, ge=1)
+    retry_base_delay_s: float = Field(default=0.2, ge=0)
+    retry_max_delay_s: float = Field(default=5.0, ge=0)
+
     @model_validator(mode="after")
     def _prod_needs_a_real_pepper(self) -> Self:
         if self.environment == "prod" and self.api_key_pepper.get_secret_value() == DEV_PEPPER:
             raise ValueError("GATEWAY_API_KEY_PEPPER must be set explicitly in prod")
+        return self
+
+    @model_validator(mode="after")
+    def _http_provider_needs_a_url(self) -> Self:
+        if self.provider == "openai_compatible" and not self.provider_base_url:
+            raise ValueError("GATEWAY_PROVIDER_BASE_URL is required for openai_compatible")
         return self
 
 

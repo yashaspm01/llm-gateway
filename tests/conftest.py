@@ -13,9 +13,10 @@ def settings() -> Settings:
     return Settings(
         environment="test",
         database_url="sqlite+aiosqlite://",
+        auto_create_tables=True,
+        provider="mock",
         admin_token=SecretStr("admin-secret"),
         api_key_pepper=SecretStr("test-pepper"),
-        auto_create_tables=True,
     )
 
 

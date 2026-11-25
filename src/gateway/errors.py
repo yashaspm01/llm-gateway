@@ -40,6 +40,17 @@ class ProviderError(GatewayError):
     status_code = 502
     error_type = "provider_error"
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = True,
+        retry_after_s: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable  # would trying again plausibly help?
+        self.retry_after_s = retry_after_s  # upstream's own "come back in N seconds"
+
 
 class ProviderTimeoutError(ProviderError):
     status_code = 504

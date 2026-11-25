@@ -1,0 +1,77 @@
+"""Retry with exponential backoff and full jitter."""
+
+import asyncio
+import logging
+import random
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+
+from gateway.errors import ProviderError
+from gateway.providers.base import Provider
+from gateway.schemas import ChatRequest, ChatResponse
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    max_attempts: int = 3
+    base_delay_s: float = 0.2
+    max_delay_s: float = 5.0
+
+    def delay_for(
+        self, attempt: int, retry_after_s: float | None, rng: random.Random
+    ) -> float | None:
+        """Seconds to wait before the next attempt, or None if we won't wait that long."""
+        ceiling = min(self.max_delay_s, self.base_delay_s * 2 ** (attempt - 1))
+        backoff = rng.uniform(0.0, ceiling)  # "full jitter"
+        if retry_after_s is None:
+            return backoff
+        if retry_after_s > self.max_delay_s:
+            return None
+        return max(backoff, retry_after_s)
+
+
+class RetryingProvider:
+    """Wraps any Provider and retries its transient failures."""
+
+    def __init__(
+        self,
+        inner: Provider,
+        policy: RetryPolicy,
+        *,
+        sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
+        rng: random.Random | None = None,
+    ) -> None:
+        self.inner = inner
+        self.policy = policy
+        self.name = inner.name
+        self._sleep = sleep  # injectable, so tests never really wait
+        self._rng = rng or random.Random()
+
+    async def aclose(self) -> None:
+        aclose = getattr(self.inner, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
+    async def complete(self, request: ChatRequest) -> ChatResponse:
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                return await self.inner.complete(request)
+            except ProviderError as exc:
+                if not exc.retryable or attempt >= self.policy.max_attempts:
+                    raise
+                delay = self.policy.delay_for(attempt, exc.retry_after_s, self._rng)
+                if delay is None:  # upstream asked for longer than we are willing to wait
+                    raise
+                log.warning(
+                    "provider=%s attempt=%d/%d failed: %s; retrying in %.2fs",
+                    self.name,
+                    attempt,
+                    self.policy.max_attempts,
+                    exc.message,
+                    delay,
+                )
+                await self._sleep(delay)

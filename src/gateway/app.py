@@ -16,7 +16,7 @@ from gateway.db import create_tables, make_engine, make_session_factory
 from gateway.deps import LimitedTeamDep, ProviderDep, SessionDep
 from gateway.errors import GatewayError, InvalidRequestError, ProviderTimeoutError
 from gateway.providers.base import Provider
-from gateway.providers.mock import MockProvider
+from gateway.providers.factory import build_provider
 from gateway.ratelimit import RateLimiter
 from gateway.schemas import ChatRequest, ChatResponse
 
@@ -26,6 +26,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if app.state.settings.auto_create_tables:
         await create_tables(app.state.engine)  # tests only; real databases use migrations
     yield
+    aclose = getattr(app.state.provider, "aclose", None)
+    if aclose is not None:
+        await aclose()
     await app.state.engine.dispose()
 
 
@@ -39,7 +42,7 @@ def create_app(provider: Provider | None = None, settings: Settings | None = Non
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
-    app.state.provider = provider if provider is not None else MockProvider()
+    app.state.provider = provider if provider is not None else build_provider(settings)
     app.state.rate_limiter = RateLimiter()
     app.include_router(admin_router)
 

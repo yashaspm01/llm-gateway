@@ -76,3 +76,12 @@ def test_patch_rejects_bad_limits(client, changes):
 def test_patch_unknown_team_is_404(client):
     response = client.patch("/admin/teams/999", json={"daily_token_budget": 5}, headers=ADMIN)
     assert response.status_code == 404
+
+
+def test_raising_the_rate_limit_applies_immediately(client):
+    team_id = create_team(client, rate_limit_per_minute=1)
+    headers = bearer(create_key(client, team_id))
+    assert client.post(URL, json=BODY, headers=headers).status_code == 200
+    assert client.post(URL, json=BODY, headers=headers).status_code == 429
+    client.patch(f"/admin/teams/{team_id}", json={"rate_limit_per_minute": 100}, headers=ADMIN)
+    assert client.post(URL, json=BODY, headers=headers).status_code == 200

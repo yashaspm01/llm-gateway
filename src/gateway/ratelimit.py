@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class _Bucket:
     tokens: float
     updated: float
+    capacity: float
 
 
 class RateLimiter:
@@ -30,10 +31,15 @@ class RateLimiter:
 
         bucket = self._buckets.get(key)
         if bucket is None:
-            bucket = _Bucket(tokens=capacity, updated=now)
+            bucket = _Bucket(tokens=capacity, updated=now, capacity=capacity)
             self._buckets[key] = bucket
         else:
-            bucket.tokens = min(capacity, bucket.tokens + (now - bucket.updated) * rate)
+            # Refill within the old capacity, then apply any change of limit.
+            bucket.tokens = min(bucket.capacity, bucket.tokens + (now - bucket.updated) * rate)
+            if capacity > bucket.capacity:
+                bucket.tokens += capacity - bucket.capacity  # raised limit: extra room now
+            bucket.tokens = min(bucket.tokens, capacity)  # lowered limit: trim down
+            bucket.capacity = capacity
             bucket.updated = now
 
         if bucket.tokens >= 1.0:

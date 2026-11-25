@@ -27,7 +27,7 @@ class Usage(BaseModel):
 class Choice(BaseModel):
     index: int
     message: ChatMessage
-    finish_reason: Literal["stop", "length"]
+    finish_reason: str | None = None
 
 
 class ChatResponse(BaseModel):

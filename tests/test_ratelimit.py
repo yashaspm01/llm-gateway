@@ -57,3 +57,11 @@ def test_lowering_the_limit_takes_effect_immediately():
     assert limiter.check(1, 2) == 0.0
     assert limiter.check(1, 2) == 0.0
     assert limiter.check(1, 2) > 0
+
+
+def test_raising_the_limit_grants_the_extra_room_immediately():
+    limiter, _ = make()
+    for _ in range(3):
+        assert limiter.check(1, 3) == 0.0
+    assert limiter.check(1, 3) > 0
+    assert limiter.check(1, 10) == 0.0  # the 7 extra tokens are available at once

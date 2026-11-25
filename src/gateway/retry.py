@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from gateway.errors import ProviderError
 from gateway.providers.base import Provider
 from gateway.schemas import ChatRequest, ChatResponse
+from gateway.status import provider_status
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ class RetryingProvider:
         aclose = getattr(self.inner, "aclose", None)
         if aclose is not None:
             await aclose()
+
+    def status(self) -> list[dict[str, object]]:
+        return provider_status(self.inner)
 
     async def complete(self, request: ChatRequest) -> ChatResponse:
         attempt = 0

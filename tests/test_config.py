@@ -16,4 +16,4 @@ def test_prod_with_a_real_pepper_is_accepted():
 
 def test_http_provider_requires_a_base_url():
     with pytest.raises(ValueError):
-        Settings(provider="openai_compatible", provider_base_url=None)
+        Settings(provider="openai_compatible", provider_base_url=None, providers_file=None)

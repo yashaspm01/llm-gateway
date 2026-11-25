@@ -1,6 +1,7 @@
 """Configuration from environment variables (12-factor style)."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, SecretStr, model_validator
@@ -31,6 +32,11 @@ class Settings(BaseSettings):
     provider_api_key: SecretStr | None = None
     provider_attempt_timeout_s: float = Field(default=10.0, gt=0)  # one attempt, not the total
 
+    # Multiple providers and the circuit breaker
+    providers_file: Path | None = None  # JSON file; takes precedence over the single provider
+    breaker_failure_threshold: int = Field(default=5, ge=1)
+    breaker_recovery_timeout_s: float = Field(default=30.0, ge=0)
+
     # Retries
     retry_max_attempts: int = Field(default=3, ge=1)
     retry_base_delay_s: float = Field(default=0.2, ge=0)
@@ -44,7 +50,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _http_provider_needs_a_url(self) -> Self:
-        if self.provider == "openai_compatible" and not self.provider_base_url:
+        if (
+            self.provider == "openai_compatible"
+            and not self.provider_base_url
+            and self.providers_file is None
+        ):
             raise ValueError("GATEWAY_PROVIDER_BASE_URL is required for openai_compatible")
         return self
 

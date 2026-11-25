@@ -25,9 +25,11 @@ class OpenAICompatibleProvider:
         base_url: str,
         api_key: str | None = None,
         timeout_s: float = 10.0,
+        model: str | None = None,
         client: httpx2.AsyncClient | None = None,
     ) -> None:
         self.name = name
+        self._model = model
         self._headers = {"authorization": f"Bearer {api_key}"} if api_key else {}
         # One client for the life of the app: it keeps connections open and reuses them.
         self._client = client or httpx2.AsyncClient(
@@ -39,11 +41,12 @@ class OpenAICompatibleProvider:
         await self._client.aclose()
 
     async def complete(self, request: ChatRequest) -> ChatResponse:
+        payload = request.model_dump(exclude_none=True)
+        if self._model is not None:
+            payload["model"] = self._model
         try:
             response = await self._client.post(
-                "chat/completions",
-                json=request.model_dump(exclude_none=True),
-                headers=self._headers,
+                "chat/completions", json=payload, headers=self._headers
             )
         except httpx2.TimeoutException as exc:  # must come before TransportError
             raise ProviderTimeoutError(f"Provider '{self.name}' timed out") from exc
@@ -65,8 +68,10 @@ class OpenAICompatibleProvider:
                 retryable=False,
             )
         try:
-            return ChatResponse.model_validate(response.json())
+            reply = ChatResponse.model_validate(response.json())
         except ValueError as exc:  # bad JSON, or JSON of the wrong shape
             raise ProviderError(
                 f"Provider '{self.name}' returned a malformed response", retryable=False
             ) from exc
+        reply.provider = self.name
+        return reply

@@ -71,3 +71,25 @@ class RateLimitedError(GatewayError):
 
 class BudgetExceededError(RateLimitedError):
     error_type = "budget_exceeded"
+
+
+class ProviderUnavailableError(ProviderError):
+    """The provider's circuit is open: we didn't even try."""
+
+    status_code = 503
+    error_type = "provider_unavailable"
+
+    def __init__(self, message: str, *, retry_after_s: float | None = None) -> None:
+        super().__init__(message, retryable=False, retry_after_s=retry_after_s)
+        if retry_after_s is not None:
+            self.headers = {"Retry-After": str(max(1, math.ceil(retry_after_s)))}
+
+
+class AllProvidersFailedError(GatewayError):
+    status_code = 503
+    error_type = "service_unavailable"
+
+    def __init__(self, message: str, retry_after_s: float | None = None) -> None:
+        super().__init__(message)
+        if retry_after_s is not None:
+            self.headers = {"Retry-After": str(max(1, math.ceil(retry_after_s)))}

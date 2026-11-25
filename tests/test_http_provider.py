@@ -30,9 +30,11 @@ def good_body(finish_reason: str = "stop") -> dict:
     }
 
 
-def make(handler, api_key="sk-secret"):
+def make(handler, api_key="sk-secret", model=None):
     client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler), base_url=BASE)
-    return OpenAICompatibleProvider(name="up", base_url=BASE, api_key=api_key, client=client)
+    return OpenAICompatibleProvider(
+        name="up", base_url=BASE, api_key=api_key, model=model, client=client
+    )
 
 
 async def test_success_sends_the_right_request():
@@ -50,6 +52,18 @@ async def test_success_sends_the_right_request():
     assert seen["body"]["model"] == "m"
     assert seen["body"]["messages"] == [{"role": "user", "content": "hello"}]
     assert reply.choices[0].message.content == "hi"
+    assert reply.provider == "up"
+
+
+async def test_model_override_replaces_the_clients_model_name():
+    seen = {}
+
+    def handler(request):
+        seen["model"] = json.loads(request.content)["model"]
+        return httpx2.Response(200, json=good_body())
+
+    await make(handler, model="provider-specific-model").complete(REQUEST)
+    assert seen["model"] == "provider-specific-model"
 
 
 async def test_unknown_finish_reasons_and_extra_fields_are_tolerated():

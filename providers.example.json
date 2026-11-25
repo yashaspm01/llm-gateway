@@ -1,0 +1,6 @@
+{
+  "providers": [
+    {"name": "primary", "base_url": "http://127.0.0.1:9000/v1"},
+    {"name": "backup", "base_url": "http://127.0.0.1:9001/v1"}
+  ]
+}

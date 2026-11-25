@@ -3,6 +3,7 @@
 FAIL_FIRST=2 FAIL_STATUS=503 uvicorn tools.fake_upstream:app --port 9000
 """
 
+import asyncio
 import os
 import time
 
@@ -13,11 +14,13 @@ app = FastAPI()
 state = {"calls": 0}
 FAIL_FIRST = int(os.environ.get("FAIL_FIRST", "2"))
 FAIL_STATUS = int(os.environ.get("FAIL_STATUS", "503"))
-SLOW_S = float(os.environ.get("SLOW_S", "0"))
+SLOW_S = float(os.environ.get("SLOW_S", "2"))
 
 
 @app.post("/v1/chat/completions")
 async def chat(request: Request) -> JSONResponse:
+    if SLOW_S:
+        await asyncio.sleep(SLOW_S)
     state["calls"] += 1
     if state["calls"] <= FAIL_FIRST:
         headers = {"Retry-After": "1"} if FAIL_STATUS == 429 else None

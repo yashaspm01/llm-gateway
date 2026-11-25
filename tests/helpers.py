@@ -50,8 +50,8 @@ def make_response(content: str = "hi") -> ChatResponse:
 class Scripted:
     """A provider that plays back fixed outcomes: exceptions are raised, anything else returned."""
 
-    def __init__(self, outcomes: list[object]) -> None:
-        self.name = "scripted"
+    def __init__(self, outcomes: list[object], name: str = "scripted") -> None:
+        self.name = name
         self.outcomes = list(outcomes)
         self.calls = 0
 
@@ -60,4 +60,7 @@ class Scripted:
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
-        return outcome  # type: ignore[return-value]
+        assert isinstance(outcome, ChatResponse)
+        if outcome.provider is None:
+            outcome = outcome.model_copy(update={"provider": self.name})
+        return outcome

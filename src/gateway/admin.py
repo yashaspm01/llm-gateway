@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from gateway import services
 from gateway.deps import SessionDep, require_admin
 from gateway.schemas import ApiKeyCreated, TeamCreate, TeamOut, TeamUpdate, UsageOut
+from gateway.status import provider_status
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -38,3 +39,8 @@ async def revoke_key(key_id: int, session: SessionDep) -> None:
 @router.get("/teams/{team_id}/usage", response_model=UsageOut)
 async def team_usage(team_id: int, session: SessionDep) -> UsageOut:
     return UsageOut(**await services.team_usage(session, team_id))
+
+
+@router.get("/providers")
+async def providers(request: Request) -> list[dict[str, object]]:
+    return provider_status(request.app.state.provider)

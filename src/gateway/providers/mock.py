@@ -40,6 +40,7 @@ class MockProvider:
             id=f"chatcmpl-{uuid4().hex}",
             created=int(time.time()),
             model=request.model,
+            provider=self.name,
             choices=[
                 Choice(
                     index=0,

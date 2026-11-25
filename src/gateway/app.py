@@ -83,6 +83,7 @@ def create_app(provider: Provider | None = None, settings: Settings | None = Non
     async def chat_completions(
         body: ChatRequest,
         request: Request,
+        http_response: Response,
         team: LimitedTeamDep,
         session: SessionDep,
         provider: ProviderDep,
@@ -96,13 +97,15 @@ def create_app(provider: Provider | None = None, settings: Settings | None = Non
             raise ProviderTimeoutError(
                 f"Provider '{provider.name}' did not answer within {timeout_s}s"
             ) from exc
+        served_by = response.provider or provider.name
         await services.record_usage(
             session,
             team_id=team.id,
             request_id=request.state.request_id,
-            provider=provider.name,
+            provider=served_by,
             response=response,
         )
+        http_response.headers["x-gateway-provider"] = served_by
         return response
 
     return app

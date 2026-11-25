@@ -27,7 +27,7 @@ class Usage(BaseModel):
 class Choice(BaseModel):
     index: int
     message: ChatMessage
-    finish_reason: str | None = None
+    finish_reason: str | None = None  # providers return values we don't enumerate
 
 
 class ChatResponse(BaseModel):
@@ -37,6 +37,7 @@ class ChatResponse(BaseModel):
     model: str
     choices: list[Choice]
     usage: Usage
+    provider: str | None = Field(default=None, exclude=True)  # who served it; never sent to clients
 
 
 class TeamCreate(BaseModel):

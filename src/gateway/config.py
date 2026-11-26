@@ -3,11 +3,31 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_PEPPER = "dev-only-pepper-change-me"
+
+_DROPPED_QUERY_PARAMS = {"channel_binding", "pgbouncer"}  # asyncpg rejects these
+
+
+def normalize_database_url(url: str) -> str:
+    """Make a provider-supplied Postgres URL work with SQLAlchemy's asyncpg driver."""
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://") :]
+    if not url.startswith("postgresql+asyncpg://"):
+        return url
+    parts = urlsplit(url)
+    query = [
+        ("ssl" if key == "sslmode" else key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key not in _DROPPED_QUERY_PARAMS
+    ]
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 class Settings(BaseSettings):
@@ -57,6 +77,11 @@ class Settings(BaseSettings):
         ):
             raise ValueError("GATEWAY_PROVIDER_BASE_URL is required for openai_compatible")
         return self
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        return normalize_database_url(value)
 
 
 @lru_cache

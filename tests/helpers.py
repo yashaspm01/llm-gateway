@@ -1,10 +1,19 @@
 """Shared test helpers. Setup goes through the real admin API, so every test is end to end."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi.testclient import TestClient
 
-from gateway.schemas import ChatMessage, ChatResponse, Choice, Usage
+from gateway.schemas import (
+    ChatChunk,
+    ChatMessage,
+    ChatResponse,
+    Choice,
+    ChunkChoice,
+    ChunkDelta,
+    Usage,
+)
 
 ADMIN = {"x-admin-token": "admin-secret"}
 URL = "/v1/chat/completions"
@@ -47,8 +56,37 @@ def make_response(content: str = "hi") -> ChatResponse:
     )
 
 
+def make_chunks(*words: str) -> list[ChatChunk]:
+    """A role chunk, one chunk per word, then a final chunk carrying usage."""
+
+    def chunk(delta: ChunkDelta, finish: str | None = None, usage: Usage | None = None):
+        return ChatChunk(
+            id="chatcmpl-stream-test",
+            created=1,
+            model="mock-1",
+            choices=[ChunkChoice(delta=delta, finish_reason=finish)],
+            usage=usage,
+        )
+
+    usage = Usage(prompt_tokens=1, completion_tokens=len(words), total_tokens=1 + len(words))
+    return [
+        chunk(ChunkDelta(role="assistant", content="")),
+        *(chunk(ChunkDelta(content=word)) for word in words),
+        chunk(ChunkDelta(), "stop", usage),
+    ]
+
+
+async def collect(stream: AsyncIterator[ChatChunk]) -> list[ChatChunk]:
+    return [chunk async for chunk in stream]
+
+
 class Scripted:
-    """A provider that plays back fixed outcomes: exceptions are raised, anything else returned."""
+    """A provider that plays back fixed outcomes.
+
+    complete(): an exception is raised, a ChatResponse is returned.
+    stream():   an exception is raised before the first chunk; a list is played chunk by
+                chunk, and an exception inside the list is raised at that point (mid-stream).
+    """
 
     def __init__(self, outcomes: list[object], name: str = "scripted") -> None:
         self.name = name
@@ -64,3 +102,16 @@ class Scripted:
         if outcome.provider is None:
             outcome = outcome.model_copy(update={"provider": self.name})
         return outcome
+
+    async def stream(self, request: object) -> AsyncIterator[ChatChunk]:
+        self.calls += 1
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        assert isinstance(outcome, list)
+        for item in outcome:
+            if isinstance(item, Exception):
+                raise item
+            if item.provider is None:
+                item = item.model_copy(update={"provider": self.name})
+            yield item

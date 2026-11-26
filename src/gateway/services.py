@@ -60,6 +60,29 @@ async def authenticate_key(session: AsyncSession, token: str, pepper: str) -> Te
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def record_tokens(
+    session: AsyncSession,
+    *,
+    team_id: int,
+    request_id: str,
+    provider: str,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> None:
+    session.add(
+        UsageRecord(
+            team_id=team_id,
+            request_id=request_id,
+            provider=provider,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+    )
+    await session.commit()
+
+
 async def record_usage(
     session: AsyncSession,
     *,
@@ -68,17 +91,15 @@ async def record_usage(
     provider: str,
     response: ChatResponse,
 ) -> None:
-    session.add(
-        UsageRecord(
-            team_id=team_id,
-            request_id=request_id,
-            provider=provider,
-            model=response.model,
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens,
-        )
+    await record_tokens(
+        session,
+        team_id=team_id,
+        request_id=request_id,
+        provider=provider,
+        model=response.model,
+        prompt_tokens=response.usage.prompt_tokens,
+        completion_tokens=response.usage.completion_tokens,
     )
-    await session.commit()
 
 
 async def team_usage(session: AsyncSession, team_id: int) -> dict[str, int]:

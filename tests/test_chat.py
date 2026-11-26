@@ -55,12 +55,6 @@ def test_invalid_requests_return_400(client, provider, auth, bad):
     assert provider.calls == 0  # bad input must never reach a provider
 
 
-def test_streaming_is_rejected_for_now(client, auth):
-    response = client.post(URL, json=payload(stream=True), headers=auth)
-    assert response.status_code == 400
-    assert "stream" in response.json()["error"]["message"]
-
-
 def test_max_tokens_truncates_the_reply(client, auth):
     body = client.post(URL, json=payload(max_tokens=2), headers=auth).json()
     assert body["choices"][0]["finish_reason"] == "length"

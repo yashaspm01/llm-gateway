@@ -40,6 +40,7 @@ async def require_team(request: Request, session: SessionDep) -> Team:
     team = await services.authenticate_key(session, token.strip(), pepper)
     if team is None:
         raise AuthenticationError("Invalid API key")
+    request.state.team_id = team.id  # lets the access log say who called
     return team
 
 

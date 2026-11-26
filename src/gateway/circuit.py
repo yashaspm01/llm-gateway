@@ -2,12 +2,13 @@
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from enum import StrEnum
 
 from gateway.errors import ProviderError, ProviderUnavailableError
 from gateway.providers.base import Provider
-from gateway.schemas import ChatRequest, ChatResponse
+from gateway.schemas import ChatChunk, ChatRequest, ChatResponse
+from gateway.streams import close_stream
 
 log = logging.getLogger(__name__)
 
@@ -124,12 +125,15 @@ class CircuitBreakerProvider:
             }
         ]
 
+    def _unavailable(self) -> ProviderUnavailableError:
+        return ProviderUnavailableError(
+            f"Provider '{self.name}' is temporarily disabled (circuit open)",
+            retry_after_s=self.breaker.retry_in(),
+        )
+
     async def complete(self, request: ChatRequest) -> ChatResponse:
         if not self.breaker.allow():
-            raise ProviderUnavailableError(
-                f"Provider '{self.name}' is temporarily disabled (circuit open)",
-                retry_after_s=self.breaker.retry_in(),
-            )
+            raise self._unavailable()
         outcome_recorded = False
         try:
             response = await self.inner.complete(request)
@@ -146,3 +150,29 @@ class CircuitBreakerProvider:
         finally:
             if not outcome_recorded:  # cancelled or an unexpected bug: never strand a probe
                 self.breaker.record_ignored()
+
+    async def stream(self, request: ChatRequest) -> AsyncIterator[ChatChunk]:
+        if not self.breaker.allow():
+            raise self._unavailable()
+        outcome_recorded = False
+        inner = self.inner.stream(request)
+        try:
+            async for chunk in inner:
+                if not outcome_recorded:  # the first chunk proves the provider answered
+                    self.breaker.record_success()
+                    outcome_recorded = True
+                yield chunk
+            if not outcome_recorded:  # an empty stream still means the provider answered
+                self.breaker.record_success()
+                outcome_recorded = True
+        except ProviderError as exc:
+            if exc.retryable:
+                self.breaker.record_failure()  # also counts if it breaks mid-stream
+            else:
+                self.breaker.record_ignored()
+            outcome_recorded = True
+            raise
+        finally:
+            if not outcome_recorded:  # cancelled before the first chunk: free the probe slot
+                self.breaker.record_ignored()
+            await close_stream(inner)

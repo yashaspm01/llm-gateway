@@ -3,13 +3,14 @@
 import asyncio
 import logging
 import random
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 
 from gateway.errors import ProviderError
 from gateway.providers.base import Provider
-from gateway.schemas import ChatRequest, ChatResponse
+from gateway.schemas import ChatChunk, ChatRequest, ChatResponse
 from gateway.status import provider_status
+from gateway.streams import close_stream
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,11 @@ class RetryPolicy:
 
 
 class RetryingProvider:
-    """Wraps any Provider and retries its transient failures."""
+    """Wraps any Provider and retries its transient failures.
+
+    For streams, retries only happen before the first chunk: once bytes have gone
+    to the client, a stream cannot be restarted or handed to another provider.
+    """
 
     def __init__(
         self,
@@ -58,6 +63,22 @@ class RetryingProvider:
     def status(self) -> list[dict[str, object]]:
         return provider_status(self.inner)
 
+    def _next_delay(self, exc: ProviderError, attempt: int) -> float | None:
+        """How long to wait before retrying, or None if we should give up and raise."""
+        if not exc.retryable or attempt >= self.policy.max_attempts:
+            return None
+        delay = self.policy.delay_for(attempt, exc.retry_after_s, self._rng)
+        if delay is not None:
+            log.warning(
+                "provider=%s attempt=%d/%d failed: %s; retrying in %.2fs",
+                self.name,
+                attempt,
+                self.policy.max_attempts,
+                exc.message,
+                delay,
+            )
+        return delay
+
     async def complete(self, request: ChatRequest) -> ChatResponse:
         attempt = 0
         while True:
@@ -65,17 +86,30 @@ class RetryingProvider:
             try:
                 return await self.inner.complete(request)
             except ProviderError as exc:
-                if not exc.retryable or attempt >= self.policy.max_attempts:
+                delay = self._next_delay(exc, attempt)
+                if delay is None:
                     raise
-                delay = self.policy.delay_for(attempt, exc.retry_after_s, self._rng)
-                if delay is None:  # upstream asked for longer than we are willing to wait
-                    raise
-                log.warning(
-                    "provider=%s attempt=%d/%d failed: %s; retrying in %.2fs",
-                    self.name,
-                    attempt,
-                    self.policy.max_attempts,
-                    exc.message,
-                    delay,
-                )
                 await self._sleep(delay)
+
+    async def stream(self, request: ChatRequest) -> AsyncIterator[ChatChunk]:
+        attempt = 0
+        while True:
+            attempt += 1
+            inner = self.inner.stream(request)
+            try:
+                try:
+                    first = await anext(inner)
+                except StopAsyncIteration:
+                    return
+                except ProviderError as exc:
+                    delay = self._next_delay(exc, attempt)
+                    if delay is None:
+                        raise
+                    await self._sleep(delay)
+                    continue
+                yield first
+                async for chunk in inner:  # after the first chunk, errors are not retried
+                    yield chunk
+                return
+            finally:
+                await close_stream(inner)

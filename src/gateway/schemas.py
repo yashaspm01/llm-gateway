@@ -40,6 +40,29 @@ class ChatResponse(BaseModel):
     provider: str | None = Field(default=None, exclude=True)  # who served it; never sent to clients
 
 
+class ChunkDelta(BaseModel):
+    role: str | None = None
+    content: str | None = None
+
+
+class ChunkChoice(BaseModel):
+    index: int = 0
+    delta: ChunkDelta
+    finish_reason: str | None = None
+
+
+class ChatChunk(BaseModel):
+    """One piece of a streamed completion."""
+
+    id: str
+    object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
+    created: int
+    model: str
+    choices: list[ChunkChoice]  # empty on the usage-only chunk some providers send last
+    usage: Usage | None = None  # only the final chunk carries it
+    provider: str | None = Field(default=None, exclude=True)
+
+
 class TeamCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     rate_limit_per_minute: int = Field(default=60, ge=1)

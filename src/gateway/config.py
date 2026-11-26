@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     app_name: str = "llm-gateway"
     environment: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
+    log_format: Literal["text", "json"] = "text"
     provider_timeout_s: float = Field(default=30.0, gt=0)  # total deadline, retries included
 
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
